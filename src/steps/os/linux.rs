@@ -253,10 +253,27 @@ fn upgrade_suse(ctx: &ExecutionContext) -> Result<()> {
 }
 fn upgrade_suse_micro(ctx: &ExecutionContext) -> Result<()> {
     if let Some(sudo) = ctx.sudo() {
-        ctx.run_type()
-            .execute(sudo)
-            .args(["transactional-update", "dup"])
-            .status_checked()?;
+        if let Some(pkcon) = which ("pkcon") {
+            if ctx.config().use_pkcon() {
+                ctx.run_type()
+                    .execute(sudo)
+                    .arg(&pkcon)
+                    .arg("refresh")
+                    .status_checked()?;
+                ctx.run_type()
+                    .execute(sudo)
+                    .arg(pkcon)
+                    .arg("update")
+                    .status_checked()?;
+            }
+        else if let Some(transactional_update) = which("transactional-update") {
+            ctx.run_type()
+                .execute(sudo)
+                .arg(transactional_update)
+                .arg("dup")
+                .status_checked()?;
+            }
+        }
     } else {
         print_warning("No sudo detected. Skipping system upgrade");
     }
