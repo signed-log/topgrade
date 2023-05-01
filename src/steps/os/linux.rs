@@ -82,8 +82,13 @@ impl Distribution {
                     } else if id_like.contains(&"centos") {
                         return Ok(Distribution::CentOS);
                     } else if id_like.contains(&"suse") {
-                        
-                        return Ok(Distribution::Suse);
+                        let id_variant = id.unwrap_or_default();
+                        if id_variant.contains(&"tumbleweed") {
+                            return Ok(Distribution::OpenSuseTumbleweed);
+                        }
+                        else {
+                            return Ok(Distribution::Suse);
+                        }
                     } else if id_like.contains(&"arch") || id_like.contains(&"archlinux") {
                         return Ok(Distribution::Arch);
                     } else if id_like.contains(&"alpine") {
@@ -123,6 +128,7 @@ impl Distribution {
             Distribution::Debian => upgrade_debian(ctx),
             Distribution::Gentoo => upgrade_gentoo(ctx),
             Distribution::Suse => upgrade_suse(ctx),
+            Distribution::OpenSuseTumbleweed => upgrade_opensuse_tumbleweed(ctx),
             Distribution::SuseMicro => upgrade_suse_micro(ctx),
             Distribution::Void => upgrade_void(ctx),
             Distribution::Solus => upgrade_solus(ctx),
@@ -259,6 +265,26 @@ fn upgrade_suse(ctx: &ExecutionContext) -> Result<()> {
 
     Ok(())
 }
+
+fn upgrade_opensuse_tumbleweed(ctx: &ExecutionContext) -> Result<()> {
+    if let Some(sudo) = ctx.sudo() {
+        ctx.run_type()
+            .execute(sudo)
+            .args(["zypper", "refresh"])
+            .status_checked()?;
+
+        ctx.run_type()
+            .execute(sudo)
+            .arg("zypper")
+            .arg("dist-upgrade")
+            .status_checked()?;
+    } else {
+        print_warning("No sudo detected. Skipping system upgrade");
+    }
+
+    Ok(())
+}
+
 fn upgrade_suse_micro(ctx: &ExecutionContext) -> Result<()> {
     if let Some(sudo) = ctx.sudo() {
         ctx.run_type()
