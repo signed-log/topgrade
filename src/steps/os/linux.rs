@@ -252,11 +252,11 @@ fn upgrade_suse(ctx: &ExecutionContext) -> Result<()> {
         ctx.run_type()
             .execute(sudo)
             .arg("zypper")
-            .arg(if ctx.config().suse_update() {
-                "update"
+            .arg(if ctx.config().suse_dup() {
+                "dist-upgrade"
             }
             else {
-                "dist-upgrade"
+                "update"
             })
             .status_checked()?;
     } else {

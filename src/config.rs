@@ -274,7 +274,7 @@ pub struct Linux {
     apt_arguments: Option<String>,
     enable_tlmgr: Option<bool>,
     redhat_distro_sync: Option<bool>,
-    suse_update: Option<bool>,
+    suse_dup: Option<bool>,
     rpm_ostree: Option<bool>,
     emerge_sync_flags: Option<String>,
     emerge_update_flags: Option<String>,
@@ -992,13 +992,13 @@ impl Config {
             .unwrap_or(false)
     }
 
-    /// Use zypper update instead of dist-upgrade (default: true on SLE/openSUSE Leap, ignored on Tumbleweed)
-    pub fn suse_update(&self) -> bool {
+    /// Use zypper dist-upgrade (same as distro-sync on RH) instead of update (default: false on SLE/Leap, ignored on Tumbleweed (dup is always ran))
+    pub fn suse_dup(&self) -> bool {
         self.config_file
             .linux
             .as_ref()
-            .and_then(|linux| linux.suse_update)
-            .unwrap_or(true)
+            .and_then(|linux| linux.suse_dup)
+            .unwrap_or(false)
     }
 
     /// Use rpm-ostree in *when rpm-ostree is detected* (default: true)
