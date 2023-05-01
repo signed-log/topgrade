@@ -274,6 +274,7 @@ pub struct Linux {
     apt_arguments: Option<String>,
     enable_tlmgr: Option<bool>,
     redhat_distro_sync: Option<bool>,
+    suse_update: Option<bool>,
     rpm_ostree: Option<bool>,
     emerge_sync_flags: Option<String>,
     emerge_update_flags: Option<String>,
@@ -988,6 +989,14 @@ impl Config {
             .linux
             .as_ref()
             .and_then(|linux| linux.redhat_distro_sync)
+            .unwrap_or(false)
+    }
+
+    pub fn suse_update(&self) -> bool {
+        self.config_file
+            .linux
+            .as_ref()
+            .and_then(|linux| linux.suse_update)
             .unwrap_or(false)
     }
 
