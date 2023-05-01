@@ -30,6 +30,7 @@ pub enum Distribution {
     Debian,
     Gentoo,
     OpenMandriva,
+    OpenSuseTumbleweed,
     PCLinuxOS,
     Suse,
     SuseMicro,
@@ -81,6 +82,7 @@ impl Distribution {
                     } else if id_like.contains(&"centos") {
                         return Ok(Distribution::CentOS);
                     } else if id_like.contains(&"suse") {
+                        
                         return Ok(Distribution::Suse);
                     } else if id_like.contains(&"arch") || id_like.contains(&"archlinux") {
                         return Ok(Distribution::Arch);
@@ -243,7 +245,13 @@ fn upgrade_suse(ctx: &ExecutionContext) -> Result<()> {
 
         ctx.run_type()
             .execute(sudo)
-            .args(["zypper", "dist-upgrade"])
+            .arg("zypper")
+            .arg(if ctx.config().suse_update() {
+                "update"
+            }
+            else {
+                "dist-upgrade"
+            })
             .status_checked()?;
     } else {
         print_warning("No sudo detected. Skipping system upgrade");
