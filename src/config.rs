@@ -992,12 +992,13 @@ impl Config {
             .unwrap_or(false)
     }
 
+    /// Use zypper update instead of dist-upgrade (default: true on SLE/openSUSE Leap, ignored on Tumbleweed)
     pub fn suse_update(&self) -> bool {
         self.config_file
             .linux
             .as_ref()
             .and_then(|linux| linux.suse_update)
-            .unwrap_or(false)
+            .unwrap_or(true)
     }
 
     /// Use rpm-ostree in *when rpm-ostree is detected* (default: true)
