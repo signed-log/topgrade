@@ -9,7 +9,7 @@ use tracing::debug;
 use crate::command::CommandExt;
 use crate::execution_context::ExecutionContext;
 use crate::terminal::{print_separator, print_warning};
-use crate::utils::require;
+use crate::utils::{require, which};
 use crate::{error::SkipStep, steps::git::Repositories};
 use crate::{powershell, Step};
 
@@ -69,6 +69,10 @@ pub fn run_scoop(ctx: &ExecutionContext) -> Result<()> {
 }
 
 pub fn update_wsl(ctx: &ExecutionContext) -> Result<()> {
+    if !is_wsl_installed()? {
+        return Err(SkipStep("WSL not installed".to_string()).into());
+    }
+
     let wsl = require("wsl")?;
 
     print_separator("Update WSL");
@@ -87,6 +91,30 @@ pub fn update_wsl(ctx: &ExecutionContext) -> Result<()> {
     Ok(())
 }
 
+/// Detect if WSL is installed or not.
+///
+/// For WSL, we cannot simply check if command `wsl` is installed as on newer
+/// versions of Windows (since windows 10 version 2004), this commmand is
+/// installed by default.
+///
+/// If the command is installed and the user hasn't installed any Linux distros
+/// on it, command `wsl -l` would print a help message and exit with failure, we
+/// use this to check whether WSL is install or not.
+fn is_wsl_installed() -> Result<bool> {
+    if let Some(wsl) = which("wsl") {
+        // Don't use `output_checked` as an execution failure log is not wanted
+        #[allow(clippy::disallowed_methods)]
+        let output = Command::new(wsl).arg("-l").output()?;
+        let status = output.status;
+
+        if status.success() {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
 fn get_wsl_distributions(wsl: &Path) -> Result<Vec<String>> {
     let output = Command::new(wsl).args(["--list", "-q"]).output_checked_utf8()?.stdout;
     Ok(output
@@ -100,12 +128,45 @@ fn upgrade_wsl_distribution(wsl: &Path, dist: &str, ctx: &ExecutionContext) -> R
     let topgrade = Command::new(wsl)
         .args(["-d", dist, "bash", "-lc", "which topgrade"])
         .output_checked_utf8()
-        .map_err(|_| SkipStep(String::from("Could not find Topgrade installed in WSL")))?;
+        .map_err(|_| SkipStep(String::from("Could not find Topgrade installed in WSL")))?
+        .stdout // The normal output from `which topgrade` appends a newline, so we trim it here.
+        .trim_end()
+        .to_owned();
 
     let mut command = ctx.run_type().execute(wsl);
+
+    // The `arg` method automatically quotes its arguments.
+    // This means we can't append additional arguments to `topgrade` in WSL
+    // by calling `arg` successively.
+    //
+    // For example:
+    //
+    // ```rust
+    // command
+    //  .args(["-d", dist, "bash", "-c"])
+    //  .arg(format!("TOPGRADE_PREFIX={dist} exec {topgrade}"));
+    // ```
+    //
+    // creates a command string like:
+    // > `C:\WINDOWS\system32\wsl.EXE -d Ubuntu bash -c 'TOPGRADE_PREFIX=Ubuntu exec /bin/topgrade'`
+    //
+    // Adding the following:
+    //
+    // ```rust
+    // command.arg("-v");
+    // ```
+    //
+    // appends the next argument like so:
+    // > `C:\WINDOWS\system32\wsl.EXE -d Ubuntu bash -c 'TOPGRADE_PREFIX=Ubuntu exec /bin/topgrade' -v`
+    // which means `-v` isn't passed to `topgrade`.
+    let mut args = String::new();
+    if ctx.config().verbose() {
+        args.push_str("-v");
+    }
+
     command
         .args(["-d", dist, "bash", "-c"])
-        .arg(format!("TOPGRADE_PREFIX={dist} exec {topgrade}"));
+        .arg(format!("TOPGRADE_PREFIX={dist} exec {topgrade} {args}"));
 
     if ctx.config().yes(Step::Wsl) {
         command.arg("-y");
@@ -115,6 +176,10 @@ fn upgrade_wsl_distribution(wsl: &Path, dist: &str, ctx: &ExecutionContext) -> R
 }
 
 pub fn run_wsl_topgrade(ctx: &ExecutionContext) -> Result<()> {
+    if !is_wsl_installed()? {
+        return Err(SkipStep("WSL not installed".to_string()).into());
+    }
+
     let wsl = require("wsl")?;
     let wsl_distributions = get_wsl_distributions(&wsl)?;
     let mut ran = false;

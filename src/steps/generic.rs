@@ -318,6 +318,30 @@ pub fn run_vcpkg_update(ctx: &ExecutionContext) -> Result<()> {
     command.args(["upgrade", "--no-dry-run"]).status_checked()
 }
 
+pub fn run_vscode_extensions_upgrade(ctx: &ExecutionContext) -> Result<()> {
+    let vscode = require("code")?;
+    print_separator("Visual Studio Code extensions");
+
+    // Vscode does not have CLI command to upgrade all extensions (see https://github.com/microsoft/vscode/issues/56578)
+    // Instead we get the list of installed extensions with `code --list-extensions` command (obtain a line-return separated list of installed extensions)
+    let extensions = Command::new(&vscode)
+        .arg("--list-extensions")
+        .output_checked_utf8()?
+        .stdout;
+
+    // Then we construct the upgrade command: `code --force --install-extension [ext0] --install-extension [ext1] ... --install-extension [extN]`
+    if !extensions.is_empty() {
+        let mut command_args = vec!["--force"];
+        for extension in extensions.split_whitespace() {
+            command_args.extend(["--install-extension", extension]);
+        }
+
+        ctx.run_type().execute(&vscode).args(command_args).status_checked()?;
+    }
+
+    Ok(())
+}
+
 pub fn run_pipx_update(ctx: &ExecutionContext) -> Result<()> {
     let pipx = require("pipx")?;
     print_separator("pipx");
@@ -367,6 +391,16 @@ pub fn run_mamba_update(ctx: &ExecutionContext) -> Result<()> {
     command.status_checked()
 }
 
+pub fn run_miktex_packages_update(ctx: &ExecutionContext) -> Result<()> {
+    let miktex = require("miktex")?;
+    print_separator("miktex");
+
+    ctx.run_type()
+        .execute(miktex)
+        .args(["packages", "update"])
+        .status_checked()
+}
+
 pub fn run_pip3_update(ctx: &ExecutionContext) -> Result<()> {
     let py = require("python").and_then(check_is_python_2_or_shim);
     let py3 = require("python3").and_then(check_is_python_2_or_shim);
@@ -383,7 +417,7 @@ pub fn run_pip3_update(ctx: &ExecutionContext) -> Result<()> {
     Command::new(&python3)
         .args(["-m", "pip"])
         .output_checked_utf8()
-        .map_err(|_| SkipStep("pip does not exists".to_string()))?;
+        .map_err(|_| SkipStep("pip does not exist".to_string()))?;
 
     let check_externally_managed = "import sysconfig; from os import path; print('Y') if path.isfile(path.join(sysconfig.get_path('stdlib'), 'EXTERNALLY-MANAGED')) else print('N')";
     Command::new(&python3)

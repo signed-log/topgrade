@@ -47,7 +47,7 @@ pub static XDG_DIRS: Lazy<Xdg> = Lazy::new(|| Xdg::new().expect("No home directo
 pub static WINDOWS_DIRS: Lazy<Windows> = Lazy::new(|| Windows::new().expect("No home directory"));
 
 fn run() -> Result<()> {
-    color_eyre::install()?;
+    install_color_eyre()?;
     ctrlc::set_handler();
 
     let opt = CommandLineArgs::parse();
@@ -63,8 +63,6 @@ fn run() -> Result<()> {
         man.render(&mut io::stdout())?;
         return Ok(());
     }
-
-    install_tracing(&opt.tracing_filter_directives())?;
 
     for env in opt.env_variables() {
         let mut splitted = env.split('=');
@@ -84,6 +82,7 @@ fn run() -> Result<()> {
     }
 
     let config = Config::load(opt)?;
+    install_tracing(&config.tracing_filter_directives())?;
     set_title(config.set_title());
     display_time(config.display_time());
     set_desktop_notifications(config.notify_each_step());
@@ -187,15 +186,10 @@ fn run() -> Result<()> {
         }
         runner.execute(Step::ConfigUpdate, "config-update", || linux::run_config_update(&ctx))?;
 
-        runner.execute(Step::BrewFormula, "Brew", || {
-            unix::run_brew_formula(&ctx, unix::BrewVariant::Path)
-        })?;
-
         runner.execute(Step::AM, "am", || linux::run_am(&ctx))?;
         runner.execute(Step::AppMan, "appman", || linux::run_appman(&ctx))?;
         runner.execute(Step::DebGet, "deb-get", || linux::run_deb_get(&ctx))?;
         runner.execute(Step::Toolbx, "toolbx", || toolbx::run_toolbx(&ctx))?;
-        runner.execute(Step::Flatpak, "Flatpak", || linux::run_flatpak(&ctx))?;
         runner.execute(Step::Snap, "snap", || linux::run_snap(&ctx))?;
         runner.execute(Step::Pacstall, "pacstall", || linux::run_pacstall(&ctx))?;
         runner.execute(Step::Pacdef, "pacdef", || linux::run_pacdef(&ctx))?;
@@ -205,6 +199,12 @@ fn run() -> Result<()> {
         runner.execute(Step::System, "pihole", || linux::run_pihole_update(&ctx))?;
         runner.execute(Step::Firmware, "Firmware upgrades", || linux::run_fwupdmgr(&ctx))?;
         runner.execute(Step::Restarts, "Restarts", || linux::run_needrestart(&ctx))?;
+
+        runner.execute(Step::Flatpak, "Flatpak", || linux::run_flatpak(&ctx))?;
+        runner.execute(Step::BrewFormula, "Brew", || {
+            unix::run_brew_formula(&ctx, unix::BrewVariant::Path)
+        })?;
+        runner.execute(Step::Lure, "LURE", || linux::run_lure_update(&ctx))?;
     }
 
     #[cfg(target_os = "macos")]
@@ -320,8 +320,12 @@ fn run() -> Result<()> {
     runner.execute(Step::Opam, "opam", || generic::run_opam_update(&ctx))?;
     runner.execute(Step::Vcpkg, "vcpkg", || generic::run_vcpkg_update(&ctx))?;
     runner.execute(Step::Pipx, "pipx", || generic::run_pipx_update(&ctx))?;
+    runner.execute(Step::Vscode, "Visual Studio Code extensions", || {
+        generic::run_vscode_extensions_upgrade(&ctx)
+    })?;
     runner.execute(Step::Conda, "conda", || generic::run_conda_update(&ctx))?;
     runner.execute(Step::Mamba, "mamba", || generic::run_mamba_update(&ctx))?;
+    runner.execute(Step::Miktex, "miktex", || generic::run_miktex_packages_update(&ctx))?;
     runner.execute(Step::Pip3, "pip3", || generic::run_pip3_update(&ctx))?;
     runner.execute(Step::PipReview, "pip-review", || generic::run_pip_review_update(&ctx))?;
     runner.execute(Step::PipReviewLocal, "pip-review (local)", || {
@@ -566,4 +570,17 @@ fn install_tracing(filter_directives: &str) -> Result<()> {
     registry.with(env_filter).with(fmt_layer).init();
 
     Ok(())
+}
+
+fn install_color_eyre() -> Result<()> {
+    color_eyre::config::HookBuilder::new()
+        // Don't display the backtrace reminder by default:
+        //   Backtrace omitted. Run with RUST_BACKTRACE=1 environment variable to display it.
+        //   Run with RUST_BACKTRACE=full to include source snippets.
+        .display_env_section(false)
+        // Display location information by default:
+        //   Location:
+        //      src/steps.rs:92
+        .display_location_section(true)
+        .install()
 }

@@ -61,7 +61,7 @@ impl Distribution {
                     }
                 } else {
                     Ok(Distribution::Fedora)
-                }
+                };
             }
 
             Some("void") => Distribution::Void,
@@ -114,10 +114,14 @@ impl Distribution {
         if PathBuf::from(OS_RELEASE_PATH).exists() {
             let os_release = Ini::load_from_file(OS_RELEASE_PATH)?;
 
+            if os_release.general_section().is_empty() {
+                return Err(TopgradeError::EmptyOSReleaseFile.into());
+            }
+
             return Self::parse_os_release(&os_release);
         }
 
-        Err(TopgradeError::UnknownLinuxDistribution.into())
+        Err(TopgradeError::EmptyOSReleaseFile.into())
     }
 
     pub fn upgrade(self, ctx: &ExecutionContext) -> Result<()> {
@@ -248,15 +252,18 @@ fn upgrade_suse(ctx: &ExecutionContext) -> Result<()> {
         .args(["zypper", "refresh"])
         .status_checked()?;
 
-    ctx.run_type()
-        .execute(sudo)
-        .arg("zypper")
-        .arg(if ctx.config().suse_dup() {
-            "dist-upgrade"
-        } else {
-            "update"
-        })
-        .status_checked()?;
+    let mut cmd = ctx.run_type().execute(sudo);
+    cmd.arg("zypper");
+    cmd.arg(if ctx.config().suse_dup() {
+        "dist-upgrade"
+    } else {
+        "update"
+    });
+    if ctx.config().yes(Step::System) {
+        cmd.arg("-y");
+    }
+
+    cmd.status_checked()?;
 
     Ok(())
 }
@@ -268,21 +275,26 @@ fn upgrade_opensuse_tumbleweed(ctx: &ExecutionContext) -> Result<()> {
         .args(["zypper", "refresh"])
         .status_checked()?;
 
-    ctx.run_type()
-        .execute(sudo)
-        .arg("zypper")
-        .arg("dist-upgrade")
-        .status_checked()?;
+    let mut cmd = ctx.run_type().execute(sudo);
+    cmd.args(["zypper", "dist-upgrade"]);
+    if ctx.config().yes(Step::System) {
+        cmd.arg("-y");
+    }
+
+    cmd.status_checked()?;
 
     Ok(())
 }
 
 fn upgrade_suse_micro(ctx: &ExecutionContext) -> Result<()> {
     let sudo = require_option(ctx.sudo().as_ref(), REQUIRE_SUDO.to_string())?;
-    ctx.run_type()
-        .execute(sudo)
-        .args(["transactional-update", "dup"])
-        .status_checked()?;
+    let mut cmd = ctx.run_type().execute(sudo);
+    cmd.arg("transactional-update");
+    if ctx.config().yes(Step::System) {
+        cmd.arg("-n");
+    }
+
+    cmd.arg("dup").status_checked()?;
 
     Ok(())
 }
@@ -305,6 +317,7 @@ fn upgrade_openmandriva(ctx: &ExecutionContext) -> Result<()> {
 
     Ok(())
 }
+
 fn upgrade_pclinuxos(ctx: &ExecutionContext) -> Result<()> {
     let sudo = require_option(ctx.sudo().as_ref(), REQUIRE_SUDO.to_string())?;
     let mut command_update = ctx.run_type().execute(sudo);
@@ -321,11 +334,13 @@ fn upgrade_pclinuxos(ctx: &ExecutionContext) -> Result<()> {
 
     command_update.status_checked()?;
 
-    ctx.run_type()
-        .execute(sudo)
-        .arg(&which("apt-get").unwrap())
-        .arg("dist-upgrade")
-        .status_checked()?;
+    let mut cmd = ctx.run_type().execute(sudo);
+    cmd.arg(&which("apt-get").unwrap());
+    cmd.arg("dist-upgrade");
+    if ctx.config().yes(Step::System) {
+        cmd.arg("-y");
+    }
+    cmd.status_checked()?;
 
     Ok(())
 }
@@ -497,10 +512,12 @@ pub fn run_deb_get(ctx: &ExecutionContext) -> Result<()> {
 
 fn upgrade_solus(ctx: &ExecutionContext) -> Result<()> {
     let sudo = require_option(ctx.sudo().as_ref(), REQUIRE_SUDO.to_string())?;
-    ctx.run_type()
-        .execute(sudo)
-        .args(["eopkg", "upgrade"])
-        .status_checked()?;
+    let mut cmd = ctx.run_type().execute(sudo);
+    cmd.arg("eopkg");
+    if ctx.config().yes(Step::System) {
+        cmd.arg("-y");
+    }
+    cmd.arg("upgrade").status_checked()?;
 
     Ok(())
 }
@@ -539,10 +556,12 @@ pub fn run_pacdef(ctx: &ExecutionContext) -> Result<()> {
     let new_version = string.contains("version: 1");
 
     if new_version {
-        ctx.run_type()
-            .execute(&pacdef)
-            .args(["package", "sync"])
-            .status_checked()?;
+        let mut cmd = ctx.run_type().execute(&pacdef);
+        cmd.args(["package", "sync"]);
+        if ctx.config().yes(Step::System) {
+            cmd.arg("--noconfirm");
+        }
+        cmd.status_checked()?;
 
         println!();
         ctx.run_type()
@@ -550,7 +569,13 @@ pub fn run_pacdef(ctx: &ExecutionContext) -> Result<()> {
             .args(["package", "review"])
             .status_checked()?;
     } else {
-        ctx.run_type().execute(&pacdef).arg("sync").status_checked()?;
+        let mut cmd = ctx.run_type().execute(&pacdef);
+        cmd.arg("sync");
+        if ctx.config().yes(Step::System) {
+            cmd.arg("--noconfirm");
+        }
+
+        cmd.status_checked()?;
 
         println!();
         ctx.run_type().execute(&pacdef).arg("review").status_checked()?;
@@ -596,10 +621,12 @@ pub fn run_packer_nu(ctx: &ExecutionContext) -> Result<()> {
 
 fn upgrade_clearlinux(ctx: &ExecutionContext) -> Result<()> {
     let sudo = require_option(ctx.sudo().as_ref(), REQUIRE_SUDO.to_string())?;
-    ctx.run_type()
-        .execute(sudo)
-        .args(["swupd", "update"])
-        .status_checked()?;
+    let mut cmd = ctx.run_type().execute(sudo);
+    cmd.args(["swupd", "update"]);
+    if ctx.config().yes(Step::System) {
+        cmd.arg("--assume=yes");
+    }
+    cmd.status_checked()?;
 
     Ok(())
 }
@@ -682,14 +709,52 @@ fn upgrade_neon(ctx: &ExecutionContext) -> Result<()> {
     Ok(())
 }
 
+/// `needrestart` should be skipped if:
+///
+/// 1. This is a redhat-based distribution
+/// 2. This is a debian-based distribution and it is using `nala` as the `apt`
+///    alternative
+fn should_skip_needrestart() -> Result<()> {
+    let distribution = Distribution::detect()?;
+    let msg = "needrestart will be ran by the package manager";
+
+    if distribution.redhat_based() {
+        return Err(SkipStep(String::from(msg)).into());
+    }
+
+    if matches!(distribution, Distribution::Debian) {
+        let apt = which("apt-fast")
+            .or_else(|| {
+                if which("mist").is_some() {
+                    Some(PathBuf::from("mist"))
+                } else {
+                    None
+                }
+            })
+            .or_else(|| {
+                if Path::new("/usr/bin/nala").exists() {
+                    Some(Path::new("/usr/bin/nala").to_path_buf())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| PathBuf::from("apt-get"));
+
+        let is_nala = apt.ends_with("nala");
+
+        if is_nala {
+            return Err(SkipStep(String::from(msg)).into());
+        }
+    }
+
+    Ok(())
+}
+
 pub fn run_needrestart(ctx: &ExecutionContext) -> Result<()> {
     let sudo = require_option(ctx.sudo().as_ref(), REQUIRE_SUDO.to_string())?;
     let needrestart = require("needrestart")?;
-    let distribution = Distribution::detect()?;
 
-    if distribution.redhat_based() {
-        return Err(SkipStep(String::from("needrestart will be ran by the package manager")).into());
-    }
+    should_skip_needrestart()?;
 
     print_separator("Check for needed restarts");
 
@@ -887,6 +952,22 @@ pub fn run_config_update(ctx: &ExecutionContext) -> Result<()> {
     Ok(())
 }
 
+pub fn run_lure_update(ctx: &ExecutionContext) -> Result<()> {
+    let lure = require("lure")?;
+
+    print_separator("LURE");
+
+    let mut exe = ctx.run_type().execute(lure);
+
+    if ctx.config().yes(Step::Lure) {
+        exe.args(["-i=false", "up"]);
+    } else {
+        exe.arg("up");
+    }
+
+    exe.status_checked()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1013,5 +1094,10 @@ mod tests {
     #[test]
     fn test_vanilla() {
         test_template(include_str!("os_release/vanilla"), Distribution::Vanilla);
+    }
+
+    #[test]
+    fn test_solus() {
+        test_template(include_str!("os_release/solus"), Distribution::Solus);
     }
 }

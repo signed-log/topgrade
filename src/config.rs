@@ -143,8 +143,10 @@ pub enum Step {
     Kakoune,
     Helix,
     Krew,
+    Lure,
     Macports,
     Mamba,
+    Miktex,
     Mas,
     Maza,
     Micro,
@@ -189,6 +191,7 @@ pub enum Step {
     Vagrant,
     Vcpkg,
     Vim,
+    Vscode,
     Winget,
     Wsl,
     WslUpdate,
@@ -339,6 +342,9 @@ pub struct Linux {
     nix_arguments: Option<String>,
 
     #[merge(strategy = crate::utils::merge_strategies::string_append_opt)]
+    nix_env_arguments: Option<String>,
+
+    #[merge(strategy = crate::utils::merge_strategies::string_append_opt)]
     apt_arguments: Option<String>,
 
     enable_tlmgr: Option<bool>,
@@ -351,6 +357,9 @@ pub struct Linux {
 
     #[merge(strategy = crate::utils::merge_strategies::string_append_opt)]
     emerge_update_flags: Option<String>,
+
+    #[merge(strategy = crate::utils::merge_strategies::vec_prepend_opt)]
+    home_manager_arguments: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Default, Debug, Merge)]
@@ -430,6 +439,8 @@ pub struct Misc {
     only: Option<Vec<Step>>,
 
     no_self_update: Option<bool>,
+
+    log_filters: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Default, Debug, Merge)]
@@ -825,14 +836,6 @@ impl CommandLineArgs {
 
     pub fn env_variables(&self) -> &Vec<String> {
         &self.env
-    }
-
-    pub fn tracing_filter_directives(&self) -> String {
-        if self.verbose {
-            "debug".into()
-        } else {
-            self.log_filter.clone()
-        }
     }
 }
 
@@ -1275,6 +1278,22 @@ impl Config {
             .and_then(|linux| linux.nix_arguments.as_deref())
     }
 
+    /// Extra nix-env arguments
+    pub fn nix_env_arguments(&self) -> Option<&str> {
+        self.config_file
+            .linux
+            .as_ref()
+            .and_then(|linux| linux.nix_env_arguments.as_deref())
+    }
+
+    /// Extra Home Manager arguments
+    pub fn home_manager(&self) -> Option<&Vec<String>> {
+        self.config_file
+            .linux
+            .as_ref()
+            .and_then(|misc| misc.home_manager_arguments.as_ref())
+    }
+
     /// Distrobox use root
     pub fn distrobox_root(&self) -> bool {
         self.config_file
@@ -1374,6 +1393,19 @@ impl Config {
 
     pub fn verbose(&self) -> bool {
         self.opt.verbose
+    }
+
+    pub fn tracing_filter_directives(&self) -> String {
+        let mut ret = String::new();
+        if let Some(directives) = self.config_file.misc.as_ref().and_then(|m| m.log_filters.as_ref()) {
+            ret.push_str(&directives.join(","));
+        }
+        ret.push(',');
+        ret.push_str(&self.opt.log_filter);
+        if self.verbose() {
+            ret.push_str(",debug");
+        }
+        ret
     }
 
     pub fn show_skipped(&self) -> bool {
